@@ -1,5 +1,7 @@
 ## Writing Functional Javascript with Ramda
 
+Start again on 3.9 currying + update app at end of module 
+
 https://app.pluralsight.com/library/courses/javascript-ramda-functional/discussion 
 https://www.themoviedb.org/account/arwl/api 
 
