@@ -1,51 +1,56 @@
 const apiKey = require('./apiKey');
 const userMoviesService = require('./userMoviesService');
-const favoriteMovies = userMoviesService.loadSavedMovies();
 
 function clearMovies() {
   document.getElementById('foundMovies').innerHTML = '';
 }
 
-function appendElement(parent, htmlText) {
-  const el = document.createElement('template');
-  el.innerHTML = htmlText;
+function appendElementToParent(parent, el) {
   document.getElementById(parent).appendChild(el.content.firstElementChild);
 }
 
-function displayMovies(movies, totalResults) {
-  clearMovies();
-  movies.forEach(movie => {
-      if (movie.poster_path !== null && movie.poster_path !== undefined) {
-        const template = `
-          <div class="movie" data-movie-id="${movie.id}">
-            <p><strong>${movie.original_title}</strong></p>
-            <img src="https://image.tmdb.org/t/p/w185${movie.poster_path}" />
-            <p>
-              <em>Year</em>: ${movie.release_date.substring(0, 4)}
-            </p>
-          </div>
-        `;
-        appendElement('foundMovies', template);
-      }
-  });
+function createElement(template) {
+  const el = document.createElement('template');
+  el.innerHTML = template;
+  return el; 
 }
 
-function movieNotFound() {
-  clearMovies();
+function createMoviesElements(createMovieTemplate, createElement, appendElementToParent, 
+  movies, totalResults) {
+  return movies
+    .filter(m => m.poster_path !== null && m.poster_path !== undefined)
+    .map(createMovieTemplate)
+    .map(createElement); 
+}
+
+function createMovieNotFoundElement(createElement) {
   const template = `<strong>I'm sorry, we could not found the movie you were looking for<strong>`;
-  appendElement('foundMovies', template);
+  return createElement(template);
+}
+
+function createMovieTemplate(movie) {
+  return `
+      <div class="movie" data-movie-id="${movie.id}">
+        <p><strong>${movie.original_title}</strong></p>
+        <img src="https://image.tmdb.org/t/p/w185${movie.poster_path}" />
+        <p>
+          <em>Year</em>: ${movie.release_date.substring(0, 4)}
+        </p>
+      </div>
+    `;
 }
 
 function processSearchResponse(response) {
-  if(response.total_results > 0) {
-    displayMovies(response.results, response.total_results);
-  } else {
-    movieNotFound();
-  }
+  clearMovies(); 
+  const elements = response.total_results > 0
+    ? createMoviesElements(createMovieTemplate, createElement, appendElementToParent, 
+      response.results, response.total_results)
+    : [createMovieNotFoundElement(createElement)];
+  elements.forEach(el => appendElementToParent('foundMovies', el)); 
 } 
 
-function processMovieDetailsResponse(movie) {
-  const movieDetailTemplate = `
+function createMovieDetailsTemplate(movie) {
+  return `
     <div class="movie-detail" data-movie-id="${movie.id}">
       <p><strong>${movie.original_title}</strong></p>
       <img src="https://image.tmdb.org/t/p/w185${movie.poster_path}" />
@@ -63,31 +68,43 @@ function processMovieDetailsResponse(movie) {
       </p>
       <p>
         <button class="btn-close">Close</button> 
-        <button class="btn-favorite" data-movie-title="${movie.title}" data-movie-id="${movie.id}">Add to favorites</button>
+        <button class="btn-favorite" 
+        data-movie-title="${movie.title}" data-movie-id="${movie.id}">
+        Add to favorites
+        </button>
       </p>
     </div>
   `;
+}
 
-  if (document.getElementsByClassName('movie-detail').length > 0) {
-    document.getElementsByClassName('movie-detail')[0].remove();
+function createMovieElement(createMovieDetailsTemplate, addElement, movie) {
+  const movieDetailTemplate = createMovieDetailsTemplate(movie); 
+  return createElement(movieDetailTemplate);
+}
+
+
+function addElementToBody(isElementOnPage, removeElement, el) {
+  if (isElementOnPage('movie-detail')) {
+    removeElement('movie-detail'); 
   }
-
-  const el = document.createElement('template');
-  el.innerHTML = movieDetailTemplate;
   document.body.appendChild(el.content.firstElementChild);
   $('.movie-detail').animate({
     opacity: 1
   }, 300);
 }
 
-// function isDetailsBeingDisplayed() {
-//   return ;
-// }
+function removeElement(className) {
+  document.getElementsByClassName(className)[0].remove();
+}
 
-function displayGenres(id, genres) {
-  let genresList = '';
-  genres.forEach(genre => genresList += `<li>${genre.name}</li>`);
-  return genresList;
+function isElementOnPage(className) {
+  return document.getElementsByClassName('movie-detail').length > 0
+}
+
+function displayGenres(genres) {
+  return genres.map(genre => `<li>${genre.name}</li>`)
+    .join(''); // will return a string (for appending)
+  
 }
 
 function ratingsOptions(r) {
@@ -98,18 +115,29 @@ function ratingsOptions(r) {
   return ratings;
 }
 
-function displayFavoriteMovies() {
+function displayFavoriteMovies(favorites) {
   document.getElementById('favorites').innerHTML = '';
-  for(let movieId of Object.keys(favoriteMovies)) {
-    appendElement('favorites', `<li><span>${favoriteMovies[movieId].title}</span> <select class="movie-rating" data-movie-id="${movieId}">${ratingsOptions(favoriteMovies[movieId].rating)}</select> <a href="#" class="remove-favorite" data-movie-id="${movieId}">Remove</a></li>`)
-  }
+
+  Object.keys(favorites)
+    .map(movieId => createFavoriteMovieElement(createElement, ratingsOptions, favorites[movieId]))
+    .forEach(e => appendElementToParent('favorites', e)); 
+}
+
+function createFavoriteMovieElement(createElement, ratingsOptions, movie) {
+  const template = `<li><span>${movie.title}</span> 
+  <select class="movie-rating" data-movie-id="${movie.id}">
+    ${ratingsOptions(movie.rating)}
+  </select>
+  <a href="#" class="remove-favorite" data-movie-id="${movie.id}">Remove</a></li>`;
+  return createElement(template); 
 }
 
 $(document).on('click', '.movie img, .movie p', (e) => {
   e.preventDefault();
   const movieDetailsUrl = `https://api.themoviedb.org/3/movie/${$(e.target).closest('.movie').data('movie-id')}?api_key=${apiKey}`;
   $.getJSON(movieDetailsUrl, response => {
-    processMovieDetailsResponse(response);
+    addElementToBody(isElementOnPage, removeElement, 
+      createMovieElement(createMovieDetailsTemplate, createElement, response));
   });
 });
 
@@ -129,11 +157,10 @@ $(document).on('click', '.btn-close', function() {
 
 $(document).on('click', '.btn-favorite', function() {
   const movieKey = $(this).data('movie-id');
-  if(!favoriteMovies[movieKey]) {
+  if(!userMoviesService.loadSavedMovies()[movieKey]) {
     const title = $(this).data('movie-title');
-    favoriteMovies[movieKey] = { title };
     userMoviesService.addFavorite(movieKey, title);
-    displayFavoriteMovies();
+    displayFavoriteMovies(userMoviesService.loadSavedMovies());
   }
   $(this).closest('div').animate({ opacity: 0 }, 300, function() {
     $(this).remove();
@@ -141,19 +168,19 @@ $(document).on('click', '.btn-favorite', function() {
 });
 
 $(document).on('click', '.remove-favorite', function(e) {
-  e.preventDefault();
+  e.preventDefault();  
   const movieId = $(this).data('movie-id');
-  delete favoriteMovies[movieId];
   userMoviesService.removeFavorite(movieId);
-  displayFavoriteMovies();
+  displayFavoriteMovies(userMoviesService.loadSavedMovies());
 });
 
 $(document).on('change', '.movie-rating', function() {
   const movieId = $(this).data('movie-id');
   var rating = $(this).val();
   userMoviesService.rateMovie(movieId, rating);
+
 });
 
 window.onload = function() {
-  displayFavoriteMovies();
+  displayFavoriteMovies(userMoviesService.loadSavedMovies());
 }
